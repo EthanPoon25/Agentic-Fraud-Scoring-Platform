@@ -6,22 +6,13 @@ resources:
         - task_key: run_graph_enrichment
           notebook_task:
             notebook_path: ../src/graph/graph_enrichment.py
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 2
 
     build_features_job:
       name: build_features_job
-      depends_on_pipeline: fraud_dlt_pipeline
       tasks:
         - task_key: build_features
           notebook_task:
             notebook_path: ../src/features/build_features.py
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
 
     train_fraud_model_job:
       name: train_fraud_model_job
@@ -29,19 +20,11 @@ resources:
         - task_key: build_features
           notebook_task:
             notebook_path: ../src/features/build_features.py
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
         - task_key: train_model
           depends_on:
             - task_key: build_features
           notebook_task:
             notebook_path: ../src/training/train_model.py
-          new_cluster:
-            spark_version: "15.4.x-ml-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
 
     build_vector_index_job:
       name: build_vector_index_job
@@ -49,10 +32,6 @@ resources:
         - task_key: build_vector_index
           notebook_task:
             notebook_path: ../src/agent/build_vector_index.py
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
 
     # Scheduled job that watches for new high-risk scores and triggers the
     # agent. Wire this to actually run src/agent/agent.py against newly
@@ -68,7 +47,3 @@ resources:
         - task_key: run_agent_on_new_flags
           notebook_task:
             notebook_path: ../src/agent/agent.py
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1

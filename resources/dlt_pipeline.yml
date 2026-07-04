@@ -4,6 +4,7 @@ resources:
       name: fraud_dlt_pipeline
       catalog: fraud_platform
       target: silver
+      serverless: true
       libraries:
         - notebook:
             path: ../src/dlt/pipeline.py
