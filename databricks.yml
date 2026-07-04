@@ -4,18 +4,25 @@ bundle:
 include:
   - resources/*.yml
 
+# 1. ADD THIS: Declare the variable at the root level first
+variables:
+  catalog:
+    description: "The target catalog for the fraud platform"
+
 targets:
   dev:
     mode: development
     default: true
     workspace:
-      host: https://<your-workspace-url>.cloud.databricks.com
+      host: https://7474657380745573.cloud.databricks.com
+    # 2. NOW THIS WORKS: Overriding the root variable for dev
     variables:
       catalog: fraud_platform
 
   prod:
     mode: production
     workspace:
-      host: https://<your-workspace-url>.cloud.databricks.com
+      host: https://7474657380745573.cloud.databricks.com
+    # Overriding the root variable for prod
     variables:
       catalog: fraud_platform
