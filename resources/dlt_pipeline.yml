@@ -1,0 +1,12 @@
+resources:
+  pipelines:
+    fraud_dlt_pipeline:
+      name: fraud_dlt_pipeline
+      catalog: fraud_platform
+      target: silver
+      libraries:
+        - notebook:
+            path: ../src/dlt/pipeline.py
+      continuous: false
+      development: true
+      channel: CURRENT
