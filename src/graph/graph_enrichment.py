@@ -1,32 +1,32 @@
 # Databricks notebook source
-# Graph enrichment job. Run this as a scheduled Lakeflow Job (see
-# resources/jobs.yml), separate from the real-time scoring path, since graph
-# computation is too slow for a per-transaction latency budget. It runs
-# periodically and writes a `component_id` / `component_size` feature that
-# the model reads at scoring time.
+# Graph enrichment job - runs on serverless compute, so it avoids GraphFrames
+# (which needs a JVM package that serverless doesn't support) and instead
+# implements connected components directly with PySpark using iterative
+# label propagation. Same goal as GraphFrames' connectedComponents(): find
+# clusters of cards/addresses/email domains that are unusually interlinked,
+# which is how fraud rings show up.
+#
+# How label propagation works, in plain terms: every node starts labeled
+# with its own ID. On each round, every node looks at its neighbors' labels
+# and adopts the smallest one it sees. Nodes that are connected (directly or
+# through a chain of other nodes) converge on the same label after enough
+# rounds - that shared label IS the component ID.
 
 # COMMAND ----------
 
-# On Databricks Runtime for ML, GraphFrames is preinstalled. On plain
-# Runtime you may need: %pip install graphframes
-from graphframes import GraphFrame
-from pyspark.sql.functions import col, lit, concat
+from pyspark.sql.functions import col, lit, concat, min as spark_min
+
+CATALOG = "fraud_platform"
+MAX_ITERATIONS = 12  # enough for small/medium graphs; increase if labels haven't converged (see printed counts below)
 
 # COMMAND ----------
 
-txns = spark.table("fraud_platform.gold.transactions_enriched")
+txns = spark.table(f"{CATALOG}.gold.gold_transactions_enriched")
 
-# Build a bipartite-ish graph: nodes are (card, address, email domain)
-# identities, edges connect a card to the address/email domain seen on each
-# transaction. Fraud rings show up as unusually large connected components -
-# many cards funneling through the same address or email domain.
-
-card_nodes = txns.select(concat(lit("card_"), col("card1")).alias("id")).distinct()
-addr_nodes = txns.select(concat(lit("addr_"), col("addr1")).alias("id")).distinct()
-email_nodes = txns.select(concat(lit("email_"), col("P_emaildomain")).alias("id")).distinct()
-
-vertices = card_nodes.union(addr_nodes).union(email_nodes).na.drop()
-
+# Build edges: card <-> address, card <-> email domain. Same idea as the
+# GraphFrames version - a card connects to whatever address/email it was
+# used with, and shared addresses/emails across many cards is the fraud-ring
+# signal.
 edges_addr = txns.select(
     concat(lit("card_"), col("card1")).alias("src"),
     concat(lit("addr_"), col("addr1")).alias("dst"),
@@ -39,41 +39,78 @@ edges_email = txns.select(
 
 edges = edges_addr.union(edges_email).distinct()
 
+# Make edges undirected: if A connects to B, B also connects to A.
+edges_undirected = edges.union(edges.select(col("dst").alias("src"), col("src").alias("dst"))).distinct()
+
+edges_undirected.write.mode("overwrite").saveAsTable(f"{CATALOG}.gold._tmp_edges")
+edges_undirected = spark.table(f"{CATALOG}.gold._tmp_edges")  # reread to cut lineage
+
 # COMMAND ----------
 
-g = GraphFrame(vertices, edges)
+# Initialize: every node's label is itself.
+all_nodes = (
+    edges_undirected.select(col("src").alias("id"))
+    .union(edges_undirected.select(col("dst").alias("id")))
+    .distinct()
+)
+labels = all_nodes.withColumn("label", col("id"))
+labels.write.mode("overwrite").saveAsTable(f"{CATALOG}.gold._tmp_labels")
 
-# Checkpointing is required for connectedComponents in GraphFrames.
-spark.sparkContext.setCheckpointDir("/tmp/graphframes_checkpoints")
+# COMMAND ----------
 
-components = g.connectedComponents()
+for i in range(MAX_ITERATIONS):
+    labels = spark.table(f"{CATALOG}.gold._tmp_labels")
+
+    # Each node looks at its neighbors' current labels...
+    neighbor_labels = (
+        edges_undirected.join(labels, edges_undirected.dst == labels.id)
+        .select(edges_undirected.src.alias("id"), labels.label.alias("candidate_label"))
+    )
+    # ...and also considers its own current label, then takes the minimum.
+    own_labels = labels.select(col("id"), col("label").alias("candidate_label"))
+
+    new_labels = (
+        neighbor_labels.union(own_labels)
+        .groupBy("id")
+        .agg(spark_min("candidate_label").alias("label"))
+    )
+
+    # Write to a fresh table each round instead of reusing the same one -
+    # this truncates Spark's query lineage so it doesn't grow unboundedly
+    # across iterations (a common gotcha with iterative Spark jobs).
+    new_labels.write.mode("overwrite").saveAsTable(f"{CATALOG}.gold._tmp_labels_next")
+    spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold._tmp_labels")
+    spark.sql(f"ALTER TABLE {CATALOG}.gold._tmp_labels_next RENAME TO {CATALOG}.gold._tmp_labels")
+
+    distinct_label_count = spark.table(f"{CATALOG}.gold._tmp_labels").select("label").distinct().count()
+    print(f"Iteration {i+1}: {distinct_label_count} distinct components so far")
+
+# COMMAND ----------
+
+final_labels = spark.table(f"{CATALOG}.gold._tmp_labels")
 
 component_sizes = (
-    components.groupBy("component")
+    final_labels.groupBy("label")
     .count()
     .withColumnRenamed("count", "component_size")
+    .withColumnRenamed("label", "component_id")
 )
 
 card_components = (
-    components.filter(col("id").startswith("card_"))
-    .join(component_sizes, on="component")
+    final_labels.filter(col("id").startswith("card_"))
+    .join(component_sizes, final_labels.label == component_sizes.component_id)
     .withColumn("card1", col("id").substr(6, 100).cast("long"))
-    .select(
-        col("card1"),
-        col("component").alias("component_id"),
-        col("component_size"),
-    )
+    .select("card1", "component_id", "component_size")
 )
+
+card_components.write.mode("overwrite").saveAsTable(f"{CATALOG}.gold.card_graph_features")
+
+# Clean up temp tables
+spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold._tmp_edges")
+spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold._tmp_labels")
 
 # COMMAND ----------
 
-(
-    card_components.write
-    .mode("overwrite")
-    .saveAsTable("fraud_platform.gold.card_graph_features")
-)
-
-# Quick sanity check: what's the largest suspicious cluster?
 print("Largest connected components (potential fraud rings):")
 display(
     card_components.select("component_id", "component_size")
