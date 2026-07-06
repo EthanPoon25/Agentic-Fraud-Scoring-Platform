@@ -78,3 +78,6 @@ notebooks/load_bronze.py        # One-time notebook: CSV -> bronze table
 - `test_auc` from the MLflow run + serving endpoint p50/p99 latency (see `src/serving/deploy_endpoint.py` load test snippet)
 - Size/count of the largest connected component the graph job flags
 - 3-5 example agent case summaries next to your own "ground truth" summary, to show you evaluated it rather than just shipping it
+
+test_auc: 0.809
+test_avg_precision: 0.179
