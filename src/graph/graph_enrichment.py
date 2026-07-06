@@ -21,7 +21,7 @@ MAX_ITERATIONS = 12  # enough for small/medium graphs; increase if labels haven'
 
 # COMMAND ----------
 
-txns = spark.table(f"{CATALOG}.gold.gold_transactions_enriched")
+txns = spark.table(f"{CATALOG}.silver.gold_transactions_enriched")
 
 # Build edges: card <-> address, card <-> email domain. Same idea as the
 # GraphFrames version - a card connects to whatever address/email it was
