@@ -3,7 +3,7 @@
 # everything to MLflow, and registers the model to Unity Catalog.
 
 # COMMAND ----------
-
+# MAGIC %pip install databricks-feature-engineering lightgbm --quiet
 import mlflow
 from databricks.feature_engineering import FeatureEngineeringClient
 from sklearn.model_selection import train_test_split

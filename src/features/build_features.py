@@ -4,6 +4,10 @@
 
 # COMMAND ----------
 
+# MAGIC %pip install databricks-feature-engineering --quiet
+
+# COMMAND ----------
+
 from databricks.feature_engineering import FeatureEngineeringClient
 from pyspark.sql.functions import col
 
@@ -11,7 +15,7 @@ fe = FeatureEngineeringClient()
 
 # COMMAND ----------
 
-txns = spark.table("fraud_platform.gold.transactions_enriched")
+txns = spark.table("fraud_platform.silver.gold_transactions_enriched")
 graph_feats = spark.table("fraud_platform.gold.card_graph_features")
 
 feature_df = (
