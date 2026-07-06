@@ -113,7 +113,8 @@ spark.sql(f"DROP TABLE IF EXISTS {CATALOG}.gold._tmp_labels")
 
 print("Largest connected components (potential fraud rings):")
 display(
-    card_components.select("component_id", "component_size")
+    spark.table(f"{CATALOG}.gold.card_graph_features")
+    .select("component_id", "component_size")
     .distinct()
     .orderBy(col("component_size").desc())
     .limit(20)
