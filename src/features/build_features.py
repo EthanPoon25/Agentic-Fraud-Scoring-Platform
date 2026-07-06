@@ -4,7 +4,7 @@
 
 # COMMAND ----------
 
-# MAGIC %pip install databricks-feature-engineering --quiet
+
 
 # COMMAND ----------
 
