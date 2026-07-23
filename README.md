@@ -71,13 +71,3 @@ notebooks/load_bronze.py        # One-time notebook: CSV -> bronze table
 7. **Build the vector index for the agent.** `databricks bundle run build_vector_index_job -t dev`
 8. **Try the agent** interactively: open `src/agent/agent.py` as a notebook and run the example at the bottom.
 9. **Launch the analyst app.** Deploy `src/app/app.py` as a Databricks App (Compute → Apps → Create App → point at this file).
-
-## What to put in your portfolio writeup
-
-- Screenshot of the DLT lineage graph
-- `test_auc` from the MLflow run + serving endpoint p50/p99 latency (see `src/serving/deploy_endpoint.py` load test snippet)
-- Size/count of the largest connected component the graph job flags
-- 3-5 example agent case summaries next to your own "ground truth" summary, to show you evaluated it rather than just shipping it
-
-test_auc: 0.809
-test_avg_precision: 0.179
